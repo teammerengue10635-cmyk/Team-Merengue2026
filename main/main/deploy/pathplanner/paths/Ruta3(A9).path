@@ -1,0 +1,67 @@
+{
+  "version": "2025.0",
+  "waypoints": [
+    {
+      "anchor": {
+        "x": 0.700884450784593,
+        "y": 5.943452211126962
+      },
+      "prevControl": null,
+      "nextControl": {
+        "x": 1.700884450784593,
+        "y": 5.943452211126962
+      },
+      "isLocked": false,
+      "linkedName": "20"
+    },
+    {
+      "anchor": {
+        "x": 3.210984308131241,
+        "y": 2.6182168330955777
+      },
+      "prevControl": {
+        "x": 2.210984308131241,
+        "y": 2.6182168330955777
+      },
+      "nextControl": null,
+      "isLocked": false,
+      "linkedName": "17"
+    }
+  ],
+  "rotationTargets": [],
+  "constraintZones": [],
+  "pointTowardsZones": [],
+  "eventMarkers": [
+    {
+      "name": "apagar recogedor",
+      "waypointRelativePos": 0.5617825793382805,
+      "endWaypointRelativePos": null,
+      "command": null
+    },
+    {
+      "name": "lanzar",
+      "waypointRelativePos": 1.0,
+      "endWaypointRelativePos": null,
+      "command": null
+    }
+  ],
+  "globalConstraints": {
+    "maxVelocity": 3.0,
+    "maxAcceleration": 3.0,
+    "maxAngularVelocity": 540.0,
+    "maxAngularAcceleration": 720.0,
+    "nominalVoltage": 12.0,
+    "unlimited": false
+  },
+  "goalEndState": {
+    "velocity": 0,
+    "rotation": 51.17017509502951
+  },
+  "reversed": false,
+  "folder": null,
+  "idealStartingState": {
+    "velocity": 0,
+    "rotation": 177.95459151111282
+  },
+  "useDefaultConstraints": true
+}

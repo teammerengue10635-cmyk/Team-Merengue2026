@@ -1,0 +1,54 @@
+{
+  "version": "2025.0",
+  "waypoints": [
+    {
+      "anchor": {
+        "x": 3.6803614457831326,
+        "y": 5.564879518072289
+      },
+      "prevControl": null,
+      "nextControl": {
+        "x": 2.4904242994526973,
+        "y": 5.708943394924217
+      },
+      "isLocked": false,
+      "linkedName": "Inicio_1"
+    },
+    {
+      "anchor": {
+        "x": 0.992144578313253,
+        "y": 5.925493975903614
+      },
+      "prevControl": {
+        "x": 0.7397948625461794,
+        "y": 5.962390070578967
+      },
+      "nextControl": null,
+      "isLocked": false,
+      "linkedName": "pelotas_piso_aliado"
+    }
+  ],
+  "rotationTargets": [],
+  "constraintZones": [],
+  "pointTowardsZones": [],
+  "eventMarkers": [],
+  "globalConstraints": {
+    "maxVelocity": 3.0,
+    "maxAcceleration": 3.0,
+    "maxAngularVelocity": 540.0,
+    "maxAngularAcceleration": 720.0,
+    "nominalVoltage": 12.0,
+    "unlimited": false
+  },
+  "goalEndState": {
+    "velocity": 0,
+    "rotation": 179.27477570094084
+  },
+  "reversed": false,
+  "folder": null,
+  "idealStartingState": {
+    "velocity": 0,
+    "rotation": 180.0
+  },
+  "useDefaultConstraints": true
+}
