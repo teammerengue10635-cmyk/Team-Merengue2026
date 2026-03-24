@@ -1,0 +1,127 @@
+{
+  "version": "2025.0",
+  "command": {
+    "type": "sequential",
+    "data": {
+      "commands": [
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Ruta1(A8)"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "lanzar"
+          }
+        },
+        {
+          "type": "wait",
+          "data": {
+            "waitTime": 3.0
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "apagar lanzador"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Ruta2(A8)"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "desplegar"
+          }
+        },
+        {
+          "type": "wait",
+          "data": {
+            "waitTime": 1.0
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "recoger"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Ruta3(A8)"
+          }
+        },
+        {
+          "type": "wait",
+          "data": {
+            "waitTime": 3.0
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "apagar recogedor"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Ruta4(A8)"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "apagar recogedor"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Ruta5(A8)"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "lanzar"
+          }
+        },
+        {
+          "type": "wait",
+          "data": {
+            "waitTime": 3.0
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "apagar lanzador"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Ruta6(A8)"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "apagar lanzador"
+          }
+        }
+      ]
+    }
+  },
+  "resetOdom": true,
+  "folder": null,
+  "choreoAuto": false
+}

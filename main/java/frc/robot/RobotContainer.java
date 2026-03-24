@@ -5,32 +5,47 @@ import static edu.wpi.first.units.Units.*;
 import com.ctre.phoenix6.swerve.SwerveModule.DriveRequestType;
 import com.ctre.phoenix6.swerve.SwerveRequest;
 
+import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.DriverStation.Alliance;
+import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.RunCommand;
+import edu.wpi.first.wpilibj2.command.SequentialCommandGroup;
 import edu.wpi.first.wpilibj2.command.InstantCommand;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
 
+/* ================= PATHPLANNER ================= */
+import com.pathplanner.lib.auto.AutoBuilder;
+import com.pathplanner.lib.auto.NamedCommands;
+import com.pathplanner.lib.commands.PathPlannerAuto;
+import com.pathplanner.lib.config.RobotConfig;
+import com.pathplanner.lib.controllers.PPHolonomicDriveController;
+import com.pathplanner.lib.config.PIDConstants;
+
+/* ================= ROBOT ================= */
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
-import frc.robot.subsystems.TestSparkSubsystem;
-
+import frc.robot.subsystems.Motors;
+import frc.robot.subsystems.VisionBack;
+import frc.robot.subsystems.VisionFront; // <-- IMPORTACIÓN NUEVA
 
 public class RobotContainer {
+    private boolean isArmExtended = false; // Memoria para saber dónde está el brazo
 
-    /* =================== LIMELIGHT PID STATE =================== */
-    private double lastTx = 0.0;
-    private double txIntegral = 0.0;
-
-    private double lastRange = 0.0;
-    private double rangeIntegral = 0.0;
+    private boolean motorUp = false;
+    
+    // Instanciamos la nueva clase de visión
+    private final VisionFront visionCameraFront = new VisionFront();
+    private final VisionBack visionCameraBack = new  VisionBack();
 
     /* =================== VELOCIDADES =================== */
-    private final double MaxSpeed =
+    public static final double MaxSpeed =
         TunerConstants.kSpeedAt12Volts.in(MetersPerSecond);
 
-    private final double MaxAngularRate =
+    public static double MaxAngularRate =
         RotationsPerSecond.of(0.75).in(RadiansPerSecond);
 
     /* =================== SWERVE =================== */
@@ -43,148 +58,276 @@ public class RobotContainer {
     private final Telemetry logger = new Telemetry(MaxSpeed);
 
     /* =================== CONTROLES =================== */
-    private final CommandXboxController driver =
-        new CommandXboxController(0);   // MANEJO
+    public final static CommandXboxController driver = new CommandXboxController(0);
+    public final CommandXboxController mechanisms = new CommandXboxController(1);
 
-    private final CommandXboxController mechanisms =
-        new CommandXboxController(1);   // MECANISMOS
-
-    /* =================== SUBSYSTEMS =================== */
-    public final CommandSwerveDrivetrain drivetrain =
+    /* ================= SUBSYSTEMS ================= */
+    public static final CommandSwerveDrivetrain drivetrain =
         TunerConstants.createDrivetrain();
 
-    private final TestSparkSubsystem testSpark =
-        new TestSparkSubsystem();
+    private final Motors testSpark = new Motors();
 
+    /* ================= AUTON ================= */
+    private final SendableChooser<Command> autoChooser = new SendableChooser<>();
+
+    /* =================== CONSTRUCTOR =================== */
     public RobotContainer() {
+
+        NamedCommands.registerCommand("lanzar", testSpark.shooters());
+        
+        NamedCommands.registerCommand("recoger",
+            new RunCommand(testSpark::intakers, testSpark).withTimeout(1.0)
+        );
+
+        NamedCommands.registerCommand("desplegar",
+            new RunCommand(testSpark::extendMotor45, testSpark).withTimeout(1.5)
+        );
+
+        RobotConfig config;
+        try {
+            config = RobotConfig.fromGUISettings();
+        } catch (Exception e) {
+            DriverStation.reportError(
+                "No se pudo cargar RobotConfig desde PathPlanner GUI",
+                e.getStackTrace()
+            );
+            throw new RuntimeException(e);
+        }
+
+        AutoBuilder.configure(
+            () -> drivetrain.getState().Pose,
+            drivetrain::resetPose,
+            () -> drivetrain.getState().Speeds,
+            (speeds, feedforwards) -> drivetrain.setControl(
+                new SwerveRequest.RobotCentric()
+                    .withVelocityX(speeds.vxMetersPerSecond)
+                    .withVelocityY(speeds.vyMetersPerSecond)
+                    .withRotationalRate(speeds.omegaRadiansPerSecond)
+            ),
+            new PPHolonomicDriveController(
+                new PIDConstants(5.0, 0.0, 0.0),
+                new PIDConstants(5.0, 0.0, 0.0)
+            ),
+            config,
+            () -> DriverStation.getAlliance()
+                    .map(a -> a == Alliance.Red)
+                    .orElse(false),
+            drivetrain
+        );
+
+        autoChooser.setDefaultOption("Do Nothing", Commands.none());
+        for (String autoName : AutoBuilder.getAllAutoNames()) {
+            autoChooser.addOption(autoName, new PathPlannerAuto(autoName));
+        }
+        SmartDashboard.putData("Autonomous", autoChooser);
+
         configureBindings();
     }
 
-    /* =================== LIMELIGHT CONSTANTS =================== */
-    private static final double TX_DEADBAND = 1.0;
-    private static final double MAX_LL_SPEED = 4.58;
+    /* =================== SPEED SCALING =================== */
 
-    private static final double CAMERA_HEIGHT = 0.36; // altura del piso a la camara
-    private static final double TAG_HEIGHT = 0.83; // altura del piso al centro del AprilTag
-    private static final double TARGET_DISTANCE = 2.5;
-    private static final double CAMERA_PITCH_DEG = 0.0;
-
-    /* =================== AIM (PID) =================== */
-    private double limelightAim() {
-        if (!LimelightHelpers.getTV("limelight")) {
-            lastTx = 0.0;
-            txIntegral = 0.0;
-            return 0.0;
-        }
-
-        double tx = LimelightHelpers.getTX("limelight");
-
-        if (Math.abs(tx) < TX_DEADBAND) {
-            lastTx = tx;
-            txIntegral = 0.0;
-            return 0.0;
-        }
-
-        double txRate = (tx - lastTx) / 0.02;
-        lastTx = tx;
-
-        txIntegral += tx * 0.02;
-        txIntegral = Math.max(Math.min(txIntegral, 0.2), -0.2);
-
-        double kP = 0.015;
-        double kD = 0.0005;
-        double kI = 0.00034;
-
-        return -(kP * tx + kD * txRate + kI * txIntegral) * MaxAngularRate;
+    private double getDriveScale() {
+        if (driver.leftBumper().getAsBoolean()) return 0.3;
+        if (driver.getLeftTriggerAxis() > 0.1) return 0.5;
+        return 1.0;
     }
 
-    /* =================== RANGE (PID) =================== */
-    private double limelightRange() {
-        if (!LimelightHelpers.getTV("limelight")) return 0.0;
-
-        double tyDeg = LimelightHelpers.getTY("limelight") + CAMERA_PITCH_DEG;
-        double tyRad = Math.toRadians(Math.max(Math.abs(tyDeg), 0.1));
-
-        double distance = (TAG_HEIGHT - CAMERA_HEIGHT) / Math.tan(tyRad);
-        double error = distance - TARGET_DISTANCE;
-
-        if (Math.abs(error) < 0.02) {
-            lastRange = 0.0;
-            rangeIntegral = 0.0;
-            return 0.0;
-        }
-
-        double dError = (error - lastRange) / 0.02;
-        lastRange = error;
-
-        rangeIntegral += error * 0.02;
-        rangeIntegral = Math.max(Math.min(rangeIntegral, 0.2), -0.2);
-
-        double rkP = 1.5;
-        double rkD = 0.09;
-        double rkI = 0.01;
-
-        return Math.max(Math.min(
-            rkP * error + rkD * dError + rkI * rangeIntegral,
-            MAX_LL_SPEED), -MAX_LL_SPEED);
+    private double getTurnScale() {
+        if (driver.rightBumper().getAsBoolean()) return 0.3;
+        if (driver.getRightTriggerAxis() > 0.1) return 0.5;
+        return 1.0;
     }
 
-    /* =================== GIROS 180° =================== */
+    /* =================== GIROS 180 =================== */
+
     private Command rotateRight180() {
-        return drivetrain.applyRequest(() ->
-            drive.withVelocityX(0)
-                 .withVelocityY(0)
-                 .withRotationalRate(MaxAngularRate * 0.7)
-        ).withTimeout(0.93);
+        return drivetrain.applyRequest(() -> drive.withVelocityX(0)
+                .withVelocityY(0)
+                .withRotationalRate(MaxAngularRate * 0.7))
+            .withTimeout(0.93);
     }
 
     private Command rotateLeft180() {
-        return drivetrain.applyRequest(() ->
-            drive.withVelocityX(0)
-                 .withVelocityY(0)
-                 .withRotationalRate(-MaxAngularRate * 0.7)
-        ).withTimeout(0.93);
+        return drivetrain.applyRequest(() -> drive.withVelocityX(0)
+                .withVelocityY(0)
+                .withRotationalRate(-MaxAngularRate * 0.7))
+            .withTimeout(0.93);
     }
 
+    /* ================= APRILTAG ID ================= */
+
+    private int getAprilTagIDFront() {
+        if (!LimelightHelpers.getTV("limelight-front")) return -1;
+        return (int) LimelightHelpers.getFiducialID("limelight-front");
+
+     
+    }
+private int getAprilTagIDBack() {
+       if (!LimelightHelpers.getTV("limelight-back")) return -1;
+        return (int) LimelightHelpers.getFiducialID("limelight-back");
+    }
     /* =================== BINDINGS =================== */
+
     private void configureBindings() {
 
-        /* ===== MANEJO NORMAL ===== */
         drivetrain.setDefaultCommand(
             drivetrain.applyRequest(() ->
-                drive.withVelocityX(-driver.getLeftY() * MaxSpeed)
-                     .withVelocityY(-driver.getLeftX() * MaxSpeed)
-                     .withRotationalRate(-driver.getRightX() * MaxAngularRate)
+                drive.withVelocityX(-driver.getLeftY() * MaxSpeed * getDriveScale())
+                     .withVelocityY(-driver.getLeftX() * MaxSpeed * getDriveScale())
+                     .withRotationalRate(-driver.getRightX() * MaxAngularRate * getTurnScale())
             )
         );
 
-        /* ===== AUTO AIM ===== */
-        driver.a().whileTrue(
+       driver.a().whileTrue(
             drivetrain.applyRequest(() -> {
-                double vx = limelightRange();
-                double rot = limelightAim();
 
-                return drive
-                    .withVelocityX(vx)
-                    .withVelocityY(-driver.getLeftX() * MaxSpeed)
-                    .withRotationalRate(rot - driver.getRightX() * MaxAngularRate);
+                int tagID = getAprilTagIDFront();
+
+                /* ===== MEDIA LUNA ===== */
+                if (tagID == 9  || tagID == 10) {
+                    // X = Automático a 2.3 metros (asumiendo que la altura del tag es 0.83m)
+                    // Y = Controlado por el joystick izquierdo del piloto (para poder "orbitar")
+                    // Rotación = Automático apuntando al Tag
+                    return drive.withVelocityX(visionCameraFront.getRangeSpeed(0.7, 1.10))
+                                .withVelocityY(-driver.getLeftX() * MaxSpeed * getDriveScale()) 
+                                .withRotationalRate(visionCameraFront.getAimRate());
+                }
+
+                /* ===== OUTPOST ===== */
+                if (tagID == 13 || tagID == 14) {
+                    // ¡OJO AQUÍ! Cambia "ALTURA_DEL_TAG_AQUI" por la altura real en metros de los tags 13 y 14.
+                    // Si no pones la altura correcta, el robot calculará mal y huirá.
+                    // También puedes cambiar el "1.5" por la distancia a la que te quieras quedar.
+                    return drive.withVelocityX(visionCameraBack.getRangeSpeed(1.5, 1.30)) 
+                                .withVelocityY(0) // 0 si quieres que vaya en línea recta perfecto
+                                .withRotationalRate(visionCameraBack.getAimRate());
+                }
+
+                /* ===== TOWER ===== */
+                if (tagID == 15 || tagID == 16) {
+                    // Lo mismo aquí, define tu distancia (ej. 1.0m) y la altura real de ese tag.
+                    return drive.withVelocityX(visionCameraBack.getRangeSpeed(1.0, 1.43) * 0.8)
+                                .withVelocityY(0)
+                                .withRotationalRate(visionCameraBack.getAimRate());
+                }
+
+                // Si no ve ningún Tag de la lista, se detiene por seguridad
+                return drive.withVelocityX(0)
+                            .withVelocityY(0)
+                            .withRotationalRate(0);
+            })
+        );
+        driver.y().whileTrue(
+            drivetrain.applyRequest(() -> {
+
+        int tagIDBack = getAprilTagIDBack();
+
+          /* ===== MEDIA LUNA ===== */
+                if (tagIDBack == 9 ) {
+                    // X = Automático a 2.3 metros (asumiendo que la altura del tag es 0.83m)
+                    // Y = Controlado por el joystick izquierdo del piloto (para poder "orbitar")
+                    // Rotación = Automático apuntando al Tag
+                    return drive.withVelocityX(visionCameraBack.getRangeSpeed(0.5, 1.10))
+                                .withVelocityY(-driver.getLeftX() * MaxSpeed * getDriveScale()) 
+                                .withRotationalRate(visionCameraBack.getAimRate());
+                }
+
+                /* ===== OUTPOST ===== */
+                if (tagIDBack == 13 || tagIDBack == 14) {
+                    // ¡OJO AQUÍ! Cambia "ALTURA_DEL_TAG_AQUI" por la altura real en metros de los tags 13 y 14.
+                    // Si no pones la altura correcta, el robot calculará mal y huirá.
+                    // También puedes cambiar el "1.5" por la distancia a la que te quieras quedar.
+                    return drive.withVelocityX(visionCameraBack.getRangeSpeed(1.5, 1.30)) 
+                                .withVelocityY(0) // 0 si quieres que vaya en línea recta perfecto
+                                .withRotationalRate(visionCameraBack.getAimRate());
+                }
+
+                /* ===== TOWER ===== */
+                if (tagIDBack == 15 || tagIDBack == 16) {
+                    // Lo mismo aquí, define tu distancia (ej. 1.0m) y la altura real de ese tag.
+                    return drive.withVelocityX(visionCameraBack.getRangeSpeed(1.0, 1.43) * 0.8)
+                                .withVelocityY(0)
+                                .withRotationalRate(visionCameraBack.getAimRate());
+                }
+
+                // Si no ve ningún Tag de la lista, se detiene por seguridad
+                return drive.withVelocityX(0)
+                            .withVelocityY(0)
+                            .withRotationalRate(0);
             })
         );
 
-        /* ===== GIROS ===== */
         driver.b().onTrue(rotateRight180());
         driver.x().onTrue(rotateLeft180());
 
-        /* ===== MECANISMOS (OPERATOR) ===== */
         mechanisms.leftTrigger()
-            .whileTrue(new RunCommand(testSpark::shooters, testSpark))
-            .onFalse(new InstantCommand(testSpark::stop0, testSpark));
-
-        mechanisms.rightTrigger()
             .whileTrue(new RunCommand(testSpark::intakers, testSpark))
-            .onFalse(new InstantCommand(testSpark::stop0, testSpark));
+            .onFalse(new InstantCommand(testSpark::stopIntake, testSpark));
 
-        /* ===== DISABLED ===== */
+            mechanisms.rightTrigger()
+            .whileTrue(testSpark.shooters())
+            .onFalse(new InstantCommand(testSpark::stopShooter, testSpark));
+
+/*         // Botón X: RECALIBRAR (Pone los sensores a 0 en la posición actual)
+        mechanisms.x().onTrue(
+            Commands.runOnce(() -> {
+                testSpark.resetArmEncoders();
+                isArmExtended = false; // Actualizamos la memoria porque el brazo ahora está guardado
+            }, testSpark)
+        );
+
+        // Botón Y: ALTERNAR (Si está guardado lo saca, si está afuera lo guarda)
+        mechanisms.y().onTrue(
+            Commands.runOnce(() -> {
+                if (!isArmExtended) {
+                    // Si NO está extendido, lo sacamos
+                    testSpark.extendMotor45();
+                    testSpark.extendMotor045();
+                    isArmExtended = true;
+                } else {
+                    // Si YA está extendido, lo guardamos
+                    testSpark.retractMotor45();
+                    testSpark.retractMotor045();
+                    isArmExtended = false;
+                }
+            }, testSpark)
+        ); */
+
+             // Botón a: MIENTRAS se mantenga presionado, el brazo se EXTIENDE. Al soltar, se apaga.
+        mechanisms.a().whileTrue(
+            Commands.startEnd(
+                () -> {
+                    testSpark.disableHold(); 
+                    testSpark.extendMotor45();
+                    testSpark.extendMotor045();
+                },
+                () -> {
+                    testSpark.stopMotor45();
+                    testSpark.stopMotor045();
+                    testSpark.enableHold(); 
+                },
+                testSpark
+            )
+        );
+
+        mechanisms.b().whileTrue(
+            Commands.startEnd(
+                () -> {
+                    testSpark.disableHold(); 
+                    testSpark.retractMotor45();
+                    testSpark.retractMotor045();
+                },
+                () -> {
+                    testSpark.stopMotor45();
+                    testSpark.stopMotor045();
+                    testSpark.enableHold(); 
+                },
+                testSpark
+            )
+        );
+
+
+
         final var idle = new SwerveRequest.Idle();
         RobotModeTriggers.disabled().whileTrue(
             drivetrain.applyRequest(() -> idle).ignoringDisable(true)
@@ -193,15 +336,22 @@ public class RobotContainer {
         drivetrain.registerTelemetry(logger::telemeterize);
     }
 
-    /* =================== AUTON =================== */
+    /* ================= AUTON ================= */
+
     public Command getAutonomousCommand() {
-        return Commands.sequence(
-            drivetrain.applyRequest(() ->
-                drive.withVelocityX(0.5)
-                     .withVelocityY(0)
-                     .withRotationalRate(0)
-            ).withTimeout(5),
-            drivetrain.applyRequest(() -> new SwerveRequest.Idle())
-        );
+        return autoChooser.getSelected();
     }
+
+    private Command intakeOn() { return new InstantCommand(testSpark::intakers, testSpark); }
+    private Command intakeOff() { return new InstantCommand(testSpark::stopIntake, testSpark); }
+    private Command shooterOn() { return new InstantCommand(testSpark::shooters, testSpark); }
+    private Command shooterOff() { return new InstantCommand(testSpark::stopShooter, testSpark); }
+    private Command extend() { return new InstantCommand(testSpark::extendMotor45, testSpark); }
+    private Command retract() { return new InstantCommand(testSpark::retractMotor45, testSpark); }
+
+    public Object getMotors() {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getMotors'");
+    }
+
 }
